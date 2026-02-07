@@ -7,13 +7,13 @@ import { getStorage } from "firebase/storage";
 // Your web app's Firebase configuration
 // TODO: Replace with your actual Firebase config
 const firebaseConfig = {
-  apiKey: "AIzaSyAxV-xUHq3LgC4ywm2PliNGSmEW8EUCE6I",
-  authDomain: "shoppin-web-caa69.firebaseapp.com",
-  projectId: "shoppin-web-caa69",
-  storageBucket: "shoppin-web-caa69.firebasestorage.app",
-  messagingSenderId: "84564091938",
-  appId: "1:84564091938:web:b836ffe5d6e5bfef11d67b",
-  measurementId: "G-7FMRFTZGR1"
+  apiKey: "AIzaSyDpztMnA4TbUUkc4dXi46CWpZ_aRMQphhI",
+  authDomain: "shayapopup-65c4b.firebaseapp.com",
+  projectId: "shayapopup-65c4b",
+  storageBucket: "shayapopup-65c4b.firebasestorage.app",
+  messagingSenderId: "965340159675",
+  appId: "1:965340159675:web:3a2f86fbb13d7dc715d39e",
+  measurementId: "G-Z83NE4X4RC"
 };
 
 // Initialize Firebase
