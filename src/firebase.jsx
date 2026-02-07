@@ -18,6 +18,8 @@ const firebaseConfig ={
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
+console.log("Firebase Project ID:", import.meta.env.VITE_FIREBASE_PROJECT_ID);
+
 // Initialize Firebase services
 export const auth = getAuth(app);
 export const db = getFirestore(app);
