@@ -1,148 +1,103 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  collection, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
-  doc, 
-  getDocs,
-  serverTimestamp 
-} from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../firebase';
-import { 
-  Plus, 
-  Edit, 
-  Trash2, 
-  X,
-  Upload,
-  Image as ImageIcon
-} from 'lucide-react';
+import { supabase } from '../supabase';
+import { Plus, Edit, Trash2, X, Image as ImageIcon } from 'lucide-react';
+
+const emptyForm = { name: '', tagline: '', image: '', count: 0 };
 
 const CollectionManagement = ({ onStatsUpdate }) => {
   const [collections, setCollections] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editingCollection, setEditingCollection] = useState(null);
   const [loading, setLoading] = useState(true);
-  
-  const [formData, setFormData] = useState({
-    name: '',
-    tagline: '',
-    image: '',
-    count: 0
-  });
-
+  const [formData, setFormData] = useState({ ...emptyForm });
   const [imageFile, setImageFile] = useState(null);
-  const [uploadProgress, setUploadProgress] = useState(false);
+  const [imagePreview, setImagePreview] = useState(null);
+  const [uploading, setUploading] = useState(false);
 
-  useEffect(() => {
-    fetchCollections();
-  }, []);
+  useEffect(() => { fetchCollections(); }, []);
 
   const fetchCollections = async () => {
-    try {
-      const collectionsRef = collection(db, 'collections');
-      const snapshot = await getDocs(collectionsRef);
-      const collectionsData = snapshot.docs.map(doc => ({
-        docId: doc.id,
-        ...doc.data()
-      }));
-      setCollections(collectionsData);
-      setLoading(false);
-    } catch (error) {
-      console.error('Error fetching collections:', error);
-      setLoading(false);
-    }
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('collections')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (!error) setCollections(data || []);
+    setLoading(false);
   };
 
   const uploadImage = async (file) => {
-    const storageRef = ref(storage, `collections/${Date.now()}_${file.name}`);
-    await uploadBytes(storageRef, file);
-    return await getDownloadURL(storageRef);
+    const ext = file.name.split('.').pop();
+    const path = `collections/${Date.now()}.${ext}`;
+    const { error } = await supabase.storage.from('product-images').upload(path, file);
+    if (error) throw error;
+    const { data } = supabase.storage.from('product-images').getPublicUrl(path);
+    return data.publicUrl;
   };
 
-  const handleImageUpload = (e) => {
+  const handleImageChange = (e) => {
     const file = e.target.files[0];
-    if (file) {
-      setImageFile(file);
-    }
+    if (!file) return;
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setUploadProgress(true);
-
+    setUploading(true);
     try {
       let imageUrl = formData.image;
+      if (imageFile) imageUrl = await uploadImage(imageFile);
 
-      // Upload image if new file selected
-      if (imageFile) {
-        imageUrl = await uploadImage(imageFile);
-      }
-
-      const collectionData = {
+      const payload = {
         ...formData,
         image: imageUrl,
-        updatedAt: serverTimestamp()
+        updated_at: new Date().toISOString(),
       };
 
       if (editingCollection) {
-        // Update existing collection
-        await updateDoc(doc(db, 'collections', editingCollection.docId), collectionData);
+        const { error } = await supabase
+          .from('collections')
+          .update(payload)
+          .eq('doc_id', editingCollection.doc_id);
+        if (error) throw error;
       } else {
-        // Add new collection
-        collectionData.createdAt = serverTimestamp();
-        await addDoc(collection(db, 'collections'), collectionData);
+        payload.created_at = new Date().toISOString();
+        const { error } = await supabase.from('collections').insert([payload]);
+        if (error) throw error;
       }
 
-      // Reset form
       resetForm();
+      setShowForm(false);
       fetchCollections();
       onStatsUpdate();
-      setShowForm(false);
     } catch (error) {
       console.error('Error saving collection:', error);
-      alert('Error saving collection. Please try again.');
+      alert('Error: ' + error.message);
     } finally {
-      setUploadProgress(false);
+      setUploading(false);
     }
   };
 
   const handleEdit = (coll) => {
     setEditingCollection(coll);
-    setFormData({
-      name: coll.name,
-      tagline: coll.tagline,
-      image: coll.image,
-      count: coll.count
-    });
+    setFormData({ name: coll.name, tagline: coll.tagline, image: coll.image, count: coll.count });
+    setImagePreview(coll.image || null);
     setShowForm(true);
   };
 
   const handleDelete = async (coll) => {
-    if (!window.confirm(`Delete "${coll.name}" collection? This action cannot be undone.`)) {
-      return;
-    }
-
-    try {
-      await deleteDoc(doc(db, 'collections', coll.docId));
-      fetchCollections();
-      onStatsUpdate();
-    } catch (error) {
-      console.error('Error deleting collection:', error);
-      alert('Error deleting collection. Please try again.');
-    }
+    if (!window.confirm(`Delete "${coll.name}" collection?`)) return;
+    const { error } = await supabase.from('collections').delete().eq('doc_id', coll.doc_id);
+    if (error) alert('Delete failed: ' + error.message);
+    else { fetchCollections(); onStatsUpdate(); }
   };
 
   const resetForm = () => {
-    setFormData({
-      name: '',
-      tagline: '',
-      image: '',
-      count: 0
-    });
+    setFormData({ ...emptyForm });
     setEditingCollection(null);
     setImageFile(null);
+    setImagePreview(null);
   };
 
   return (
@@ -153,10 +108,7 @@ const CollectionManagement = ({ onStatsUpdate }) => {
           <p className="text-stone-600">{collections.length} total collections</p>
         </div>
         <button
-          onClick={() => {
-            resetForm();
-            setShowForm(true);
-          }}
+          onClick={() => { resetForm(); setShowForm(true); }}
           className="flex items-center gap-2 bg-amber-600 text-white px-6 py-3 rounded-lg hover:bg-amber-700 transition-colors"
         >
           <Plus className="w-5 h-5" />
@@ -164,22 +116,19 @@ const CollectionManagement = ({ onStatsUpdate }) => {
         </button>
       </div>
 
-      {/* Collections Grid */}
       {loading ? (
         <div className="text-center py-12">
-          <div className="inline-block w-8 h-8 border-4 border-amber-600 border-t-transparent rounded-full animate-spin"></div>
+          <div className="inline-block w-8 h-8 border-4 border-amber-600 border-t-transparent rounded-full animate-spin" />
           <p className="text-stone-600 mt-4">Loading collections...</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {collections.map((coll) => (
-            <div key={coll.docId} className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+            <div key={coll.doc_id} className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
               <div className="aspect-[3/4] bg-stone-100 relative">
-                <img
-                  src={coll.image}
-                  alt={coll.name}
-                  className="w-full h-full object-cover"
-                />
+                {coll.image && (
+                  <img src={coll.image} alt={coll.name} className="w-full h-full object-cover" />
+                )}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
                 <div className="absolute bottom-4 left-4 right-4 text-white">
                   <h3 className="font-serif text-xl mb-1">{coll.name}</h3>
@@ -190,17 +139,15 @@ const CollectionManagement = ({ onStatsUpdate }) => {
               <div className="p-4 flex gap-2">
                 <button
                   onClick={() => handleEdit(coll)}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 border border-stone-300 rounded-lg hover:bg-stone-50 transition-colors"
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 border border-stone-300 rounded-lg hover:bg-stone-50 transition-colors text-sm"
                 >
-                  <Edit className="w-4 h-4" />
-                  Edit
+                  <Edit className="w-4 h-4" /> Edit
                 </button>
                 <button
                   onClick={() => handleDelete(coll)}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-colors"
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-colors text-sm"
                 >
-                  <Trash2 className="w-4 h-4" />
-                  Delete
+                  <Trash2 className="w-4 h-4" /> Delete
                 </button>
               </div>
             </div>
@@ -208,7 +155,6 @@ const CollectionManagement = ({ onStatsUpdate }) => {
         </div>
       )}
 
-      {/* Add/Edit Collection Modal */}
       {showForm && (
         <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
@@ -217,106 +163,83 @@ const CollectionManagement = ({ onStatsUpdate }) => {
                 {editingCollection ? 'Edit Collection' : 'Add New Collection'}
               </h3>
               <button
-                onClick={() => {
-                  setShowForm(false);
-                  resetForm();
-                }}
-                className="p-2 hover:bg-stone-100 rounded-lg transition-colors"
+                onClick={() => { setShowForm(false); resetForm(); }}
+                className="p-2 hover:bg-stone-100 rounded-lg"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 space-y-6">
-              {/* Collection Name */}
-              <div>
-                <label className="block text-sm font-medium text-stone-700 mb-2">
-                  Collection Name *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="Festive Sarees"
-                  className="w-full px-4 py-2 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
-                />
-              </div>
+              {[
+                { key: 'name', label: 'Collection Name', placeholder: 'Festive Sarees', required: true },
+                { key: 'tagline', label: 'Tagline', placeholder: 'Elegance for Every Celebration', required: true },
+              ].map(({ key, label, placeholder, required }) => (
+                <div key={key}>
+                  <label className="block text-sm font-medium text-stone-700 mb-2">{label} {required && '*'}</label>
+                  <input
+                    type="text"
+                    required={required}
+                    value={formData[key]}
+                    onChange={(e) => setFormData({ ...formData, [key]: e.target.value })}
+                    placeholder={placeholder}
+                    className="w-full px-4 py-2 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+              ))}
 
-              {/* Tagline */}
               <div>
-                <label className="block text-sm font-medium text-stone-700 mb-2">
-                  Tagline *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.tagline}
-                  onChange={(e) => setFormData({ ...formData, tagline: e.target.value })}
-                  placeholder="Elegance for Every Celebration"
-                  className="w-full px-4 py-2 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
-                />
-              </div>
-
-              {/* Item Count */}
-              <div>
-                <label className="block text-sm font-medium text-stone-700 mb-2">
-                  Number of Items *
-                </label>
+                <label className="block text-sm font-medium text-stone-700 mb-2">Number of Items</label>
                 <input
                   type="number"
-                  required
                   min="0"
                   value={formData.count}
-                  onChange={(e) => setFormData({ ...formData, count: parseInt(e.target.value) })}
-                  placeholder="24"
+                  onChange={(e) => setFormData({ ...formData, count: parseInt(e.target.value) || 0 })}
                   className="w-full px-4 py-2 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                 />
               </div>
 
-              {/* Collection Image */}
               <div>
-                <label className="block text-sm font-medium text-stone-700 mb-2">
-                  Collection Image *
-                </label>
-                <div className="border-2 border-dashed border-stone-300 rounded-lg p-8 text-center hover:border-amber-500 transition-colors cursor-pointer">
+                <label className="block text-sm font-medium text-stone-700 mb-2">Collection Image</label>
+                <div className="border-2 border-dashed border-stone-300 rounded-lg p-6 text-center hover:border-amber-500 transition-colors">
+                  {imagePreview ? (
+                    <div>
+                      <img src={imagePreview} alt="preview" className="w-full h-48 object-cover rounded-lg mb-2" />
+                      <label htmlFor="coll-image" className="text-xs text-amber-600 cursor-pointer hover:underline">
+                        Change image
+                      </label>
+                    </div>
+                  ) : (
+                    <label htmlFor="coll-image" className="cursor-pointer block">
+                      <ImageIcon className="w-12 h-12 text-stone-400 mx-auto mb-3" />
+                      <p className="text-sm text-stone-600">Click to upload collection image</p>
+                      <p className="text-xs text-stone-400 mt-1">Recommended: 800×1200px (3:4 ratio)</p>
+                    </label>
+                  )}
                   <input
                     type="file"
                     accept="image/*"
-                    onChange={handleImageUpload}
+                    onChange={handleImageChange}
                     className="hidden"
-                    id="collection-image"
+                    id="coll-image"
                   />
-                  <label htmlFor="collection-image" className="cursor-pointer">
-                    <ImageIcon className="w-16 h-16 text-stone-400 mx-auto mb-4" />
-                    <p className="text-sm text-stone-600 mb-2">
-                      {imageFile ? imageFile.name : 'Click to upload collection image'}
-                    </p>
-                    <p className="text-xs text-stone-500">
-                      Recommended: 800x1200px or 3:4 ratio
-                    </p>
-                  </label>
                 </div>
               </div>
 
-              {/* Submit Buttons */}
               <div className="flex gap-4">
                 <button
                   type="button"
-                  onClick={() => {
-                    setShowForm(false);
-                    resetForm();
-                  }}
+                  onClick={() => { setShowForm(false); resetForm(); }}
                   className="flex-1 px-6 py-3 border border-stone-300 rounded-lg hover:bg-stone-50 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={uploadProgress}
+                  disabled={uploading}
                   className="flex-1 px-6 py-3 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors disabled:opacity-50"
                 >
-                  {uploadProgress ? 'Uploading...' : (editingCollection ? 'Update Collection' : 'Add Collection')}
+                  {uploading ? 'Uploading...' : editingCollection ? 'Update Collection' : 'Add Collection'}
                 </button>
               </div>
             </form>

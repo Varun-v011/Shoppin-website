@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../firebase';
+import { supabase } from '../supabase';
 import { Lock, Mail, Eye, EyeOff } from 'lucide-react';
 
 const AdminLogin = ({ onLoginSuccess }) => {
@@ -14,12 +13,12 @@ const AdminLogin = ({ onLoginSuccess }) => {
     e.preventDefault();
     setLoading(true);
     setError('');
-
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
+      if (authError) throw authError;
       onLoginSuccess();
     } catch (err) {
-      setError('Invalid email or password');
+      setError('Invalid email or password. Please try again.');
       console.error('Login error:', err);
     } finally {
       setLoading(false);
@@ -34,7 +33,7 @@ const AdminLogin = ({ onLoginSuccess }) => {
             <Lock className="w-8 h-8 text-white" />
           </div>
           <h1 className="font-serif text-3xl text-stone-800 mb-2">Admin Panel</h1>
-          <p className="text-stone-600">Curated Threads Lookbook</p>
+          <p className="text-stone-600">Shaya Popup</p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-6">
@@ -45,9 +44,7 @@ const AdminLogin = ({ onLoginSuccess }) => {
           )}
 
           <div>
-            <label className="block text-sm font-medium text-stone-700 mb-2">
-              Email Address
-            </label>
+            <label className="block text-sm font-medium text-stone-700 mb-2">Email Address</label>
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-stone-400" />
               <input
@@ -56,15 +53,13 @@ const AdminLogin = ({ onLoginSuccess }) => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full pl-10 pr-4 py-3 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
-                placeholder="admin@curatedthreads.com"
+                placeholder="admin@shayapopup.com"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-stone-700 mb-2">
-              Password
-            </label>
+            <label className="block text-sm font-medium text-stone-700 mb-2">Password</label>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-stone-400" />
               <input
@@ -95,7 +90,7 @@ const AdminLogin = ({ onLoginSuccess }) => {
         </form>
 
         <p className="text-center text-sm text-stone-500 mt-6">
-          Protected admin area - Authorized personnel only
+          Protected admin area — Authorized personnel only
         </p>
       </div>
     </div>
