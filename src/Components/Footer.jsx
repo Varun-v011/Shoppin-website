@@ -55,7 +55,7 @@ const Footer = ({ onNavigate }) => {
                 WhatsApp
               </button>
               <button 
-                onClick={() => window.open('https://instagram.com/yourhandle', '_blank')}
+                onClick={() => window.open('https://www.instagram.com/shaya__popup?igsh=MWxic2VxbHNwZzA5dg==', '_blank')}
                 className="flex items-center gap-2 text-stone-300 hover:text-white transition-colors"
               >
                 <Instagram className="w-5 h-5" />
